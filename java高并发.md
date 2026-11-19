@@ -178,3 +178,49 @@ java.util.concurrent 包中的 BlockingQueue 接口提供了线程安全的队�
 3.通过 Future 取消任务。使用线程池提交任务，并通过 Future.cancel(true) 尝试取消任务，任务执行中的退出依赖它是否响应中断
 
 4.处理不可中断的阻塞操作。不是所有等待线程都响应中断。比如普通的 ReentrantLock.lock() 不会因中断取消等待，要改用 `lockInterruptibly()` 。部分传统 IO 等待则需要关闭资源来解除阻塞
+
+## 场景
+
+### 多线程打印奇偶数，怎么控制打印的顺序
+
+可以利用 wait() 和 notify() 来控制线程的执行顺序
+
+```java
+public class PrintOddEven {
+    private static final Object lock = new Object();
+    private static int count = 1;
+    private static final int MAX_COUNT = 10;
+    
+}
+```
+
+### 单例模型既然已经用了 synchronized，为什么还要加 volatile?
+
+这里说的是双重检查锁定的单例写法。关键原因是：
+
+```java
+public class Singleton {
+    private static volatile Singleton instance;
+
+    private Singleton() {}
+
+    public static Singleton getInstance() {
+        if (instance == null) {  // 第一次检查，不持有锁
+            synchronized (Singleton.class) {
+                if (instance == null) {
+                    instance = new Singleton();
+                }
+            }
+        }
+        return instance;
+    }
+}
+```
+
+synchronized 的作用是避免多个线程同时创建实例。第一次检查减少已经初始化后的加锁开销，第二次检查则避免多个线程先后进入同步块后重复创建。
+
+volatile 的作用是让这个实例引用被安全地发布给没有获取锁的读线程。
+
+instance = new Singleton() 可以粗略理解为分配内存、初始化对象、把引用赋给 instance。如果缺少安全发布，其他线程可能观察到 instance 已经不为 null，但对象初始化的结果还没有正确对它可见。
+
+这时他会
