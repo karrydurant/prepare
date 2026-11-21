@@ -117,7 +117,7 @@ synchronized 和 ReentrantLock 都是可重入的互斥锁，都能用于保护�
 
 底层实现：
 
-### ✖️:CAS 有什么缺点？
+### ✖️CAS 有什么缺点？
 
 ##### ABA 问题
 
@@ -128,6 +128,8 @@ synchronized 和 ReentrantLock 都是可重入的互斥锁，都能用于保护�
 CAS 本身只是一次尝试，是很多基于 CAS 的算法在失败后循环重试。大量线程更新一个变量时，可能反复失败，消耗 CPU，并产生缓存一致性开销。可以根据场景使用锁，或者像 LongAdder 一样分散计数竞争。
 
 ##### 不能直接保护多个独立变量的整体操作
+
+### CAS 有什么问题，Java 是怎么解决的
 
 ## 线程池
 
@@ -190,7 +192,7 @@ submit()：接受 Runnable 或 Callable 任务，返回 Future。Callable 可以
 
 
 
-### CompletableFuture 和 Future 有什么区别
+### ✖️:CompletableFuture 和 Future 有什么区别
 
 Future 主要用于获取异步结果、等待完成和取消任务，CompletableFuture 在这些能力上进一步支持异步任务之间的组合和完成后的回调。
 
@@ -209,3 +211,177 @@ thenCombine()：是 CompletableFuture 的并行组合回调方法，等待两个
 allOf()：等待多个阶段全部完成，返回 CompletableFuture<Void>，各个结果仍需从原来的 Future 获取
 
 exceptionally()/handle()：处理失败，或者把成功和失败都转换成后续结果
+
+```java
+import java.util.concurrent.*;
+
+class CompletableFutureExample {
+    public static void main(String[] args) {
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            CompletableFuture<Integer> price =
+                    CompletableFuture.supplyAsync(() -> 100, executor);
+            CompletableFuture<Integer> stock =
+                    CompletableFuture.supplyAsync(() -> 20, executor);
+            CompletableFuture<String> result = price.thenCombine(stock,
+                    (p, s) -> "价格：" + p + "，库存：" + s);
+            System.out.println(result.join());
+        } finally {
+            executor.shutdown();
+        }
+    }
+}
+```
+
+不指定执行器的异步方法，通常使用 ForkJoinPool。
+
+
+
+## 场景
+
+### ✔️:多线程打印奇偶数，怎么控制打印的顺序
+
+可以利用wait()和notify()来控制线程的执行顺序
+
+```java
+public class PrintOddEven {
+    private static final Object lock = new Object();
+    private static int count = 1;
+    private static final int MAX_COUNT = 10;
+
+    public static void main(String[] args) {
+        Runnable printOdd = () -> {
+            while (count <= MAX_COUNT) {
+                synchronized (lock) {
+                    while (count <= MAX_COUNT && count % 2 == 0) {
+                        try {
+                            lock.wait();
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            return;
+                        }
+                    }
+                    if (count > MAX_COUNT) {
+                        lock.notify();
+                        return;
+                    }
+                    System.out.println(Thread.currentThread().getName() + ": " + count++);
+                    lock.notify();
+                }
+            }
+        };
+
+        Runnable printEven = () -> {
+            while (count < MAX_COUNT) {
+                synchronized (lock) {
+                    while (count <= MAX_COUNT && count % 2 != 0) {
+                        try {
+                            lock.wait();
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            return;
+                        }
+                    }
+                    if (count > MAX_COUNT) {
+                        lock.notify();
+                        return;
+                    }
+                    System.out.println(Thread.currentThread().getName() + ": " + count++);
+                    lock.notify();
+                }
+            }
+        }
+
+        Thread oddThread = new Thread(printOdd, "OddThread");
+        Thread evenThread = new Thread(printEven, "EvenThread");
+        oddThread.start();
+        evenThread.start();
+    }
+}
+```
+
+synchronized 放在循环内部，锁的粒度最小化，减少持锁时间
+
+wait 外层判断用 while 而不是 if，防止虚假唤醒
+
+### 单例模型既然已经用了 synchronized，为什么还要加 volatile
+
+这里说的是双重检查锁定的单例写法。
+
+```java
+public class Singleton {
+    private static volatile Singleton instance;
+
+    private Singleton() {}
+
+    public static Singleton getInstance() {
+        if (instance == null) {
+            synchronized (Singleton.class) {
+                if (instance == null) {
+                    instance = new Singleton();
+                }
+            }
+        }
+        return instance;
+    }
+}
+```
+
+关键原因是：第一次检查和最终读取实例引用并不都在 synchronized 里，所以不能只靠锁来保证对象的安全发布
+
+synchronized 的作用是避免多个线程同时创建实例。
+
+volatile 的作用是让这个实例引用被安全地发布给没有获取锁的读线程
+
+### ✔️:3个线程并发执行，1个线程等待这三个线程全部执行完再执行，怎么实现？
+
+可以使用 CountDownLatch 来实现：
+
+创建一个 CountDownLatch 对象，并将计数器初始化为 3，因为有 3 个线程要等待
+
+创建 3 个并发执行的线程，在每个线程的任务结束时调用 countDown 方法将计数器减 1
+
+创建第 4 个线程（或者用 main 线程也行），使用 await 方法等待计数器为 0，即等待其他 3 个线程完成任务
+
+```java
+import java.util.concurrent.CountDownLatch;
+
+public class CountDownLatchExample {
+    public static void main(String[] args) {
+        CountDownLatch latch = new CountDownLatch(3);
+
+        for (int i = 0; i < 3; i++) {
+            final int threadNumber = i + 1;
+            new Thread(() -> {
+                try {
+                    System.out.println("Thread " + threadNumber + " is working.");
+                    Thread.sleep((long) (Math.random() * 1000));
+                    System.out.println("Thread " + threadNumber + " has finished.");
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                    // 恢复中断标记
+                    Thread.currentThread().interrupt();
+                } finally {
+                    // 任务完成后, 计数器减 1
+                    latch.countDown();
+                }
+            }).start();
+        }
+
+        new Thread(() -> {
+            try {
+                 System.out.println("Waiting for other threads to finish.");
+                // 等待计数器为 0
+                latch.await();
+                System.out.println("All threads have finished, this thread starts to work.");
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+                // 恢复中断标记
+                Thread.currentThread().interrupt();
+            }
+        }).start();
+    }
+}
+```
+
+### 
