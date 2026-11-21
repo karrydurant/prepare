@@ -53,6 +53,77 @@ volatile 规则：对一个 volatile 变量的写，happens-before 后续对这�
 
 happens-before 不代表底层指令一定按这个顺序执行，而是要求最终观察到的结果符合这些规则。所以不能把 volatile 理解为禁止所有重排序，他限制的是会破坏这些保证的重排序。
 
+### ✔️保证数据的一致性有哪些方案
+
+事务管理：使用数据库事务来确保一组数据库操作要么全部成功提交，要么全部回滚失败。通过 ACID 属性，数据库事务可以保证数据的一致性
+
+锁机制：使用锁来实现对共享资源的互斥访问。在 Java 中使用 synchronized 关键字、ReentrantLock 或其它锁机制来控制并发访问，从而避免并发操作导致数据不一致。
+
+版本控制：通过乐观锁的方式，在更新数据时记录数据的版本信息，从而避免同时对同一数据进行修改
+
+### 线程的创建方式有哪些
+
+1.继承 Thread 类
+
+自定义类继承 java.lang.Thread 类，重写其 run() 方法，run() 方法中定义了线程执行的具体任务。创建该类的实例后，通过调用 start() 方法启动线程。
+
+```java
+class MyThread extends Thread {
+    @Override
+    public void run() {
+        // 
+    }
+}
+
+public static void main(String[] args) {
+    MyThread t = new MyThread();
+    t.start();
+}
+```
+
+优点：编写简单，如果需要访问当前线程，无需使用 Thread.currentThread() 方法，直接使用 this，即可获得当前线程。
+
+缺点：因为线程类已经继承了 Thread 类，所以不能再继承其它父类
+
+2.实现 Runnable 接口
+
+如果一个类已经继承了其他类，就不能再继承Thread类，此时可以实现 java.lang.Runnable 接口。实现 Runnable 接口需要重写 run() 方法，然后将此 Runnable 对象作为参数传递给 Thread 类的构造器，创建 Thread 对象后调用其 start() 方法启动线程
+
+```java
+class MyRunnable implements Runnable {
+    @Override
+    public void run() {
+        
+    }
+}
+
+public static void main(String[] args) {
+    Thread t = new Thread(new MyRunnable());
+    t.start();
+}
+```
+
+优点：线程类只是实现了Runable接口，还可以继承其他的类。
+
+#
+
+### ✔️Java 线程的状态有哪些
+
+调用线程 Thread 中的 getState() 方法获取当前线程的状态。
+
+| 线程状态 | 解释 |
+| --- | --- |
+| NEW | 尚未启动的线程状态，即线程创建，还未调用 start 方法 |
+| RUNNABLE | 就绪状态（调用 start，等待调度）+ 正在运行 |
+| BLOCKED | 等待监视器锁时，陷入阻塞状态 |
+| WAITING | 等待状态的线程正在等待另一线程执行特定的操作（notify） |
+| TIMED_WAITING | 具有指定等待时间的等待状态 |
+| TERMINATED | 线程完成执行，终止状态 |
+
+### sleep 和 wait 的区别是什么
+
+sleep() 和 wait() 都可以让线程暂停执行，但用途不一样：sleep 主要是让当前线程休眠，wait 主要是配合锁进行线程间协作
+
 ## 并发安全
 
 ### juc 包下你常用的类
