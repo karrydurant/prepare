@@ -2,225 +2,200 @@
 
 ## 多线程
 
-### 介绍一下 Java 的内存模型（JMM）
+### ✔️:介绍一下 Java 的内存模型（JMM）
 
-JMM，也就是 Java 内存模型，是 Java 定义的一套多线程访问共享变量的规则。简单地说，就是规定了一个线程修改共享变量
-后，其他线程什么时候看到，以及哪些操作的先后顺序是有保证的。
+JMM，也就是 Java 内存模型，是 Java 定义的一套多线程访问共享变量的规则。简单说就是规定了一个线程修改变量后，其他线程什么时候能看到，以及哪些线程的先后顺序是有保证的。
 
-理解 JMM，主要看：可见性、原子性和有序性
+理解 JMM，主要看 3 个问题：可见性、原子性和有序型
 
 ##### 可见性
 
-比如两个线程共享一个停止标志，线程 A 把标志改成了 true，希望线程 B 看到后结束循环。但如果没有同步措施，线程 B 可
-能就一直看不到这个变化。
+比如两个线程共享一个停止标志，线程 A 把标志改成了 true，希望线程 B 看到后结束循环。但如果没有同步措施，线程 B 就可能一直看不到这个变化。因为处理器有缓存，编译器也会做优化，线程读取共享变量时，不一定每次都能观察到其他线程的最新修改。
 
-为什么会这样？因为处理器有缓存，编译器也会做优化，线程读取共享变量时不一定每次都能观察到其他线程的最新修改。
+JMM 用主内存和工作内存来描述这种交互：共享变量存放在主内存中，线程通过自己的工作内存来操作变量。这是一种抽象模型，不能把工作内存直接等同于 CPU 缓存，也不能把主内存直接等同于 JVM 堆。
 
-JMM 用主内存和工作内存来描述这种交互：共享变量放在主内存中，线程通过自己的工作内存来操作变量。不过，这是一种抽象
-模型，不能把工作内存直接等同于 CPU 缓存，也不能把主内存直接等同于 JVM 堆。
+对于停止标志这种场景，可以使用 volatile：
 
-对于停止标志这种场景，可以使用 volatile：`private volatile boolean stopped = false;`
+```java
+private volatile boolean stopped = false;
+
+public void run() {
+    while (!stopped) {
+        // 执行任务
+    }
+}
+public void stop() {
+    stopped = true;
+}
+```
 
 ##### 原子性
 
-比如 `i++`，看着是一行代码，其实包含 "读取i，i+1，写回i" 三个步骤。如果两个线程都读到了 10，然后都把 11 写回去，
-就丢失了一次更新。
+比如 i++，看着是一行代码，其实包含 "读取i、加 1、写回i" 三个步骤。如果两个线程读取到同一个数再加1写回去就会损失一次更新。
 
-这时候不能只加 volatile，他不能把这三个步骤变成一个不可分割的操作。可以
+这时候只加 volatile 没用，因为他不能把这三个步骤变成一个不可分割的操作。可以使用 AtomicInteger，或者用 synchronized、ReentrantLock 把整个操作保护起来。
 
-### wait 状态下的线程如何恢复到 RUNNABLE 状态
+##### 有序性
 
-如果这里说的是调用 Object.wait() 后进入等待状态的线程，常见的结束等待方式有：
+编译器和处理器为了提高效率可能调整指令的执行顺序，只要不改变单线程程序的执行结果就行。但在多线程环境下，这种调整可能让另一个线程看不到符合预期的状态，比如拿到了对象引用，对象却还没有初始化完成
 
-其他线程对同一个对象（线程调用 wait() 时锁的那个监视器对象）调用 notify() 或 notifyAll()。
+JMM 通过 happens-before 规则来规定哪些操作之间具有可见性和顺序保证，比如：
 
-等待线程被中断，随后抛出 InterruptedException。
+volatile 规则：对一个 volatile 变量的写，happens-before 后续对这个变量的读
 
-调用了带超时时间的 wait()，等待时间到达
+锁规则：对一把锁的解锁，happens-before 后续对同一把锁的加锁。
 
-发生虚假唤醒(wait 的线程在没有被 notify 的情况下自行唤醒)
+线程启动规则：调用线程的 start()，happens-before 被启动线程中的操作。
 
-因为会发生虚假唤醒，所以代码不能写成 `if (条件不满足) { wait() }`，必须用 while 循环判断条件
+线程结束规则：线程中的操作，happens-before 另一个线程通过 join() 成功等待它结束之后的操作
 
-不过结束等待不等于马上恢复执行。线程还需要重新获取调用 wait() 时释放的监视器锁，如果锁还被占用，就可能先处于 BLOCKED。
+传递性：如果 A happens-before B，B happens-before C，那么 A happens-before C。
 
-比如等待一个准备完成的标志，可以这样写（以下代码位于可以抛出 InterruptedException 的方法中）：
+happens-before 不代表底层指令一定按这个顺序执行，而是要求最终观察到的结果符合这些规则。所以不能把 volatile 理解为禁止所有重排序，他限制的是会破坏这些保证的重排序。
+
+## 并发安全
+
+### ✖️:ConcurrentHashMap 是怎么保证线程安全的
+
+### ✔️:synchronized 和 ReentrantLock 的工作原理及其应用场景
+
+两者都可实现可重入的互斥访问，并提供相应的内存可见性保证。主要区别在于实现方式和提供的功能。
+
+##### synchronized 工作原理
+
+synchronized 使用对象关联的监视器锁。同步代码块通常对应 monitorenter、monitorexit 字节码指令，同步方法则通过方法上的 ACC_SYNCHRONIZED标志，由 JVM 在调用和退出时处理加锁、解锁。
+
+同一时刻只有一个线程能持有同一把锁，持有者可以再次进入使用这把锁的同步代码。退出一次同步范围，就释放一次重入，完全释放后其他线程才有机会获取锁。
+
+如果调用 wait()，线程会释放调用对象的监视器锁，进入等待集合，收到通知后还要重新获取锁。即使之前重入了多次，wait() 也会释放这个监视器的全部持有，并在返回前恢复原来的持有状态。
+
+JVM 会针对不同的竞争情况优化 synchronized，不能认为每次加锁都要调用操作系统互斥量，或者每次都要发生线程阻塞。
+
+##### ReentrantLock 工作原理
+
+ReentrantLock 基于 AQS 实现，主要依靠同步状态 state、持有锁的线程信息，以及等待队列。
+
+首次获取：锁空闲时，通过 CAS 等方式尝试修改 state，成功后记录持有线程。
+
+再次获取：如果当前线程已经持有锁，就增加 state，记录重入次数
+
+获取失败：根据调用的 API，选择排队等待、响应中断、等待超时，或直接返回失败
+
+释放锁：减少重入次数，完全释放后唤醒等待线程，使其重新尝试获取。
+
+它默认是非公平锁，可以通过 new ReentrantLock(true) 创建公平锁。lockInterruptibly() 支持可中断等待，tryLock(timeout, unit) 支持超时等待，多个 Condition 可以区分不同的等待条件
+
+##### 应用场景的区别
+
+简单的共享数据保护可以优先用 synchronized。比如比如对一组字段进行更新，代码块比较短，也没有特殊的等待要求，自动释放锁能减少使用错误。
+
+需要控制获取锁的过程，可以使用 ReentrantLock。比如等待锁超过 100 毫秒就放弃、任务取消后结束锁等待，或者生产者和消费者分别等待 notFull、notEmpty 两个条件。
+
+不能直接说 ReentrantLock 一定比 synchronized 快。
+
+### ✖️:syncronized 和 ReentrantLock 的区别
+
+synchronized 和 ReentrantLock 都是可重入的互斥锁，都能用于保护共享数据，区别主要有以下几个：
+
+使用方式：synchronized 是关键字，进入同步范围时自动加锁，退出时自动释放；ReentrantLock 是类，需要显示加锁，并在 finally 中解锁
+
+公平性：synchronized 不保证公平，ReentrantLock 默认非公平，但可以配置
+
+中断和超时：等待进入 synchronized 不能通过中断直接取消
+
+等待通知
+
+底层实现：
+
+### ✖️:CAS 有什么缺点？
+
+##### ABA 问题
+
+线程读到 A，准备更新时发现还是 A，但中间可能已经被改成 B，再改回 A。CAS 只比较当前值，发现不了这段变化。如果业务关心状态是否经历过修改，可以把版本号一起比较，比如使用 AtomicStampedReference。并不是所有场景都会受到 ABA 影响，要看中间的变化是否会破坏业务判断。
+
+##### 竞争激烈时重试成本高
+
+CAS 本身只是一次尝试，是很多基于 CAS 的算法在失败后循环重试。大量线程更新一个变量时，可能反复失败，消耗 CPU，并产生缓存一致性开销。可以根据场景使用锁，或者像 LongAdder 一样分散计数竞争。
+
+##### 不能直接保护多个独立变量的整体操作
+
+## 线程池
+
+### ✖️线程池怎么使用
+
+线程池的核心作用是复用线程、控制并发数，避免频繁创建销毁线程带来的性能开销。
+
+可以通过 Executors 工具类快速创建线程池，适合简单场景，不用手动配置复杂参数。比如需要一个固定线程数的线程池，处理一批异步任务：
 
 ```java
-synchronized (lock) {
-    while (!ready) {
-        lock.wait();
-    }
-}
+// 创建固定3个线程的线程池
+ExecutorService fixedThreadPool = Executors.newFixedThreadPool(3);
 
-// 其他线程修改条件，并通知等待线程
-synchronized (lock) {
-    ready = true;
-    lock.notifyAll();
-}
-// ready 的检查和修改都放在同一把锁的保护下，这样即使通知先于等待发生，等待线程也会看到 ready 已经是 true，不再调用 wait()。 
-```
-
-如果说的是更广泛的 WAITING 状态，还要区分具体方法：join() （`t1.join()` 意味着当前线程在这里阻塞，等 t1 跑完）等待的是目标线程结束，park() （LockSupport.park() 意味着阻塞当前线程）可以由 unpark() 或中断等方式使其返回，不能都用 notify() 来唤醒
-
-### notify 和 notifyAll 的区别
-
-两者都是对某个对象的等待线程发出通知，调用时必须持有这个对象的监视器锁，而且调用后不会立即释放锁。
-
-notify()：从这个对象的等待集合里选择一个线程通知，选择顺序没有 Java API 层面的保证。
-
-notifyAll()：通知这个对象等待集合里的所有线程，让他们有机会重新竞争锁。
-
-这里要区分 "被通知" 和 "获得锁"：即使调用 notifyAll() ，同一时刻也只有一个线程能拿到这把监视器锁。线程拿到锁之后，还要重新检查自己的等待条件，条件不满足就继续 wait()。
-
-同一个对象上既有等待 "队列非空" 的消费者，也有等待 "队列未满" 的生产者。如果只调用 notify()，可能通知了一个条件仍不满足的线程，而真正能继续工作的线程还在等待，程序可能无法继续推进。
-
-所以同一把锁对应多个等待条件或者不好判断应该通知谁时，通常用 notifyAll 更稳妥。它的代价是可能唤醒一些暂时不能继续工作的线程，增加锁竞争。
-
-如果希望分别通知不同条件的线程，可以使用 ReentrantLock 配合多个 Condition。无论使用哪种方式，等待条件都应该放在 while 中检查。
-
-### ReentrantLock + Condition 的具体使用方法
-
-ReentrantLock + Condition 可以一把锁分出多个独立等待队列，signal 精准叫醒对应队列里的线程，互不干扰。
-
-lock.newCondition()->创建一个独立等待队列
-
-condition.await()=obj.wait()
-
-condition.signal()=obj.notify()
-
-condition.signalAll()=obj.notifyAll()
-
-```java
-class BoundedQueue<T> {
-    private final T[] items;
-    private int count = 0;
-    private final ReentrantLock lock = new ReentrantLock();
-    // 两个独立等待队列
-    private final Condition notFull = lock.newCondition();
-    private final Condition notEmpty = lock.newCondition();
-
-    public BoundedQueue(int capacity) {
-        items = (T[]) new Object[capacity];
-    }
-
-    // 生产者：放数据
-    public void put(T t) throws InterruptedException {
-        lock.lock();
+// 提交 Runnable 任务，无返回值
+for (int i=0; i<5; i++) {
+    int taskNum = i;
+    fixedThreadPool.submit(() -> {
+        System.out.println("当前线程 " + Thread.currentThread().getName() + " 处理任务 " + taskNum);
         try {
-            // 队列满，生产者去 notFull 队列等待
-            while (count == items.length) {
-                notFull.await();
-            }
-            items[count++] = t;
-            // 唤醒消费者队列的线程
-            notEmpty.signal();
-        } finally {
-            lock.unlock();
+            Thread.sleep(1000);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
-    }
-
-    // 消费者：拿数据
-    public T take() throws InterruptedException {
-        lock.lock();
-        try {
-            // 队列空，消费者去 notEmpty 队列等待
-            while (count==0) {
-                notEmpty.await();
-            }
-            T res = items[--count];
-            // 拿完数据只唤醒 "生产者队列" 的线程
-            notFull.signal();
-            return res;
-        } finally {
-            lock.unlock();
-        }
-    }
+    });
 }
-```
 
-### notify 选择的是哪个线程
+// 提交 Callable 任务，有返回值
+Future<Integer> future = fixedThreadPool.submit(() -> {
+    Thread.sleep(500);
+    return 100+200;  // 任务返回结果
+});
 
-从 Java API 的约定来看，notify() 选择哪个等待线程没有顺序保证，不能认为一定是最先等待的线程，也不能把它当作公平调度。
-
-具体 JVM 的某个版本可能采用某种等待队列处理顺序，但这是实现细节，写程序时不能依赖它。
-
-而且，被选择的线程只是有机会重新竞争监视器锁，并不是直接获得锁。它还要和其他竞争这把锁的线程一起等待，拿到锁后才能从 wait() 继续执行。
-
-如果业务要求线程按指定顺序执行，就应该使用明确的状态变量、独立的 Condition 或 Semaphore 来控制，不能靠 notify() 恰好选中某个线程。
-
-### 不同的线程之间如何通信
-
-共享变量是最基本的线程间通信方式。多个线程可以访问和修改同一个共享变量，从而实现信息的传递。为保证线程安全，通常要使用 synchronized 关键字或 volatile 关键字。
-
-Object 类中的 wait()、notify() 和 notifyAll() 方法可以用于线程间的协作。wait() 方法使当前线程进入等待状态，notify() 方法唤醒在此对象监视器上等待的单个线程，notifyAll() 方法唤醒在此对象监视器上等待的所有线程。
-
-java.util.concurrent.locks 包中的 Lock 和 Condition 接口提供了比 synchronized 更灵活的线程间通信方式。Condition 接口的 await() 方法类似于 wait() 方法，signal() 方法类似于 notify() 方法，signalAll() 方法类似于 notifyAll() 方法。
-
-java.util.concurrent 包中的 BlockingQueue 接口提供了线程安全的队列操作，当队列满时，插入元素的线程会被阻塞；当队列为空时，获取元素的线程会被阻塞。
-
-### 线程间通信方式有哪些
-
-### 如何停止一个线程
-
-在 Java 中，停止线程的正确方式是通过协作式的逻辑控制线程终止，而非强制暴力终止（如已废弃的 Thread.stop()）
-
-以下是实现安全停止线程的多种方法：
-
-1.通过共享标志位主动终止。定义一个可见的状态变量，由主线程控制其值，工作线程循环检测该变量以及决定是否退出。
-
-```java
-
-```
-
-2.使用线程中断机制。通过 Thread.interrupt() 触发线程中断状态，结合中断检测逻辑实现安全停止
-
-3.通过 Future 取消任务。使用线程池提交任务，并通过 Future.cancel(true) 尝试取消任务，任务执行中的退出依赖它是否响应中断
-
-4.处理不可中断的阻塞操作。不是所有等待线程都响应中断。比如普通的 ReentrantLock.lock() 不会因中断取消等待，要改用 `lockInterruptibly()` 。部分传统 IO 等待则需要关闭资源来解除阻塞
-
-## 场景
-
-### 多线程打印奇偶数，怎么控制打印的顺序
-
-可以利用 wait() 和 notify() 来控制线程的执行顺序
-
-```java
-public class PrintOddEven {
-    private static final Object lock = new Object();
-    private static int count = 1;
-    private static final int MAX_COUNT = 10;
-    
+// 获取 Callable 任务的返回值，会阻塞直到任务完成
+try {
+    Integer result = future.get();
+    System.out.println("任务返回结果: " + result);
+} catch (Exception e) {
+    e.printStackTrace();
 }
+
+// 任务执行完后关闭线程池 避免资源泄露
+fixedThreadPool.shutdown();
 ```
 
-### 单例模型既然已经用了 synchronized，为什么还要加 volatile?
+Executors 创建的线程池有潜在问题，比如 newCachedThreadPool 可能创建大量线程导致 OOM，newScheduledThreadPool 的 maximumPoolSize 为 Integer.MAX_VALUE 且内部使用无界的 DelayedWorkQueue，任务堆积时可能导致 OOM，所以复杂业务场景更推荐用 ThreadPoolExecutor 手动配置，能精准控制线程池行为。
 
-这里说的是双重检查锁定的单例写法。关键原因是：
+手动创建 ThreadPoolExecutor 需要指定 7 个核心参数
 
-```java
-public class Singleton {
-    private static volatile Singleton instance;
+### execute 和 submit 有什么区别
 
-    private Singleton() {}
+两者都能提交任务，主要区别是可提交的任务类型、返回值，以及异常如何被观察到。
 
-    public static Singleton getInstance() {
-        if (instance == null) {  // 第一次检查，不持有锁
-            synchronized (Singleton.class) {
-                if (instance == null) {
-                    instance = new Singleton();
-                }
-            }
-        }
-        return instance;
-    }
-}
-```
+execute()：接受 Runnable 任务，没有返回值，无法拿到 Future 对象，后续不能主动获取任务结果，也不能取消任务
 
-synchronized 的作用是避免多个线程同时创建实例。第一次检查减少已经初始化后的加锁开销，第二次检查则避免多个线程先后进入同步块后重复创建。
+submit()：接受 Runnable 或 Callable 任务，返回 Future。Callable 可以返回结果，Runnable 也可以通过 Future 判断完成或取消
 
-volatile 的作用是让这个实例引用被安全地发布给没有获取锁的读线程。
+对于常见的 ThreadPoolExecutor，任务通过 execute() 执行时，如果有未捕获的运行时异常，会离开任务执行流程，通常导致这个工作线程退出，异常可以交给线程的未捕获异常处理器。线程池会根据状态和配置补充工作线程。
 
-instance = new Singleton() 可以粗略理解为分配内存、初始化对象、把引用赋给 instance。如果缺少安全发布，其他线程可能观察到 instance 已经不为 null，但对象初始化的结果还没有正确对它可见。
+通过 submit() 提交时，任务通常会被包装成 FutureTask。任务异常会保存在 Future 里，调用 get() 时以 ExecutionException 的形式抛出，原始原因可以通过 getCause() 获取。
 
-这时他会
+
+
+### CompletableFuture 和 Future 有什么区别
+
+Future 主要用于获取异步结果、等待完成和取消任务，CompletableFuture 在这些能力上进一步支持异步任务之间的组合和完成后的回调。
+
+比如先查询用户，再用用户信息查询订单；或者同时查询价格和库存，等两个结果都回来后组合。这些场景用普通 Future 往往要手动调用 get()，用 CompletableFuture 可以表达任务之间的关系。
+
+CompletableFuture 的几个常见方法：
+
+supplyAsync()/runAsync()：启动有返回值或无返回值的异步任务
+
+thenApply()：属于 CompletableFuture 的串行回调方法，上一个异步阶段正常完成并产出结果后，执行一段转换逻辑，该转换是同步计算，接收上一步的结果作为入参，输出一个新的普通对象，框架自动把这个结果包装成新的 CompletableFuture，形成异步链路
+
+thenCompose()：也是 CompletableFuture 的串行回调方法，等待上一个异步阶段正常完成拿到结果，然后用这个结果发起下一个异步任务，函数返回值本身就是 CompletableFuture<R>，它会自动做扁平化，避免出现 CompletableFuture<CompletableFuture<R>> 这种双层嵌套
+
+thenCombine()：是 CompletableFuture 的并行组合回调方法，等待两个互相独立的异步任务都正常执行完成，拿到两者的结果，再执行一段同步合并逻辑，把两个结果加工成一个新值，自动包装成新的 CompletableFuture。
+
+allOf()：等待多个阶段全部完成，返回 CompletableFuture<Void>，各个结果仍需从原来的 Future 获取
+
+exceptionally()/handle()：处理失败，或者把成功和失败都转换成后续结果
