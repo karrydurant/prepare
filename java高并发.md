@@ -61,9 +61,9 @@ happens-before 不代表底层指令一定按这个顺序执行，而是要求�
 
 版本控制：通过乐观锁的方式，在更新数据时记录数据的版本信息，从而避免同时对同一数据进行修改
 
-### 线程的创建方式有哪些
+### ✔️线程的创建方式有哪些
 
-1.继承 Thread 类
+##### 继承 Thread 类
 
 自定义类继承 java.lang.Thread 类，重写其 run() 方法，run() 方法中定义了线程执行的具体任务。创建该类的实例后，通过调用 start() 方法启动线程。
 
@@ -85,7 +85,7 @@ public static void main(String[] args) {
 
 缺点：因为线程类已经继承了 Thread 类，所以不能再继承其它父类
 
-2.实现 Runnable 接口
+##### 实现 Runnable 接口
 
 如果一个类已经继承了其他类，就不能再继承Thread类，此时可以实现 java.lang.Runnable 接口。实现 Runnable 接口需要重写 run() 方法，然后将此 Runnable 对象作为参数传递给 Thread 类的构造器，创建 Thread 对象后调用其 start() 方法启动线程
 
@@ -93,7 +93,7 @@ public static void main(String[] args) {
 class MyRunnable implements Runnable {
     @Override
     public void run() {
-        
+        // 线程执行的代码
     }
 }
 
@@ -103,9 +103,83 @@ public static void main(String[] args) {
 }
 ```
 
-优点：线程类只是实现了Runable接口，还可以继承其他的类。
+优点：线程类只是实现了Runable接口，还可以继承其他的类。在这种方式下，可以多个线程共享同一个目标对象，非常适合多个相同线程来处理同一份资源的情况，从而可以将 CPU 代码和数据分开，形成清晰的模型，较好地体现了面向对象的思想
 
-#
+缺点：如果要访问当前线程，必须使用 Thread.currenThread() 方法
+
+##### 实现 Callable 接口与 FutureTask
+
+java.util.concurrent.Callable 接口类似于 Runnable，但 Callable 的 call() 方法可以有返回值并且可以抛出异常。要执行 Callable 任务，需将它包进一个 FutureTask，因为 Thread 类的构造器只接受 Runnable 参数，而 FutureTask 实现了 Runnable 接口
+
+```java
+class MyCallable implements Callable<Integer> {
+    @Override
+    public Integer call() throws Exception {
+        return 1;
+    }
+}
+
+public static void main(String[] args) {
+    MyCallable task = new MyCallable();
+    FutureTask<Integer> futureTask = new FutureTask<>(task);
+    Thread t = new Thread(futureTask);
+    t.start();
+
+    try {
+        Integer result = futureTask.get();
+        System.out.println("Result: " + result);
+    } catch (InterruptedException | ExecutionException e) {
+        e.printStackTrace();
+    }
+}
+```
+
+缺点：编程较为复杂，如果要访问当前线程，必须调用 Thread.currentThread() 方法
+
+优点：线程类只实现 Callable 接口，仍然可以继承其他类；且 call() 方法可以有返回值，也可以抛出异常，配合 FutureTask 能方便地获取异步执行结果
+
+##### 使用线程池
+
+从 Java 5 开始引入的 java.util.concurrent.ExecutorService 和相关类提供了线程池的支持，这是一种更高效的线程管理方式，避免了频繁创建和销毁线程的开销。可以通过 Executors 类的静态方法创建不同类型的线程池。
+
+```java
+class Task implements Runnable {
+    @Override
+    public void run() {
+        // 线程执行的代码
+    }
+}
+
+public static void main(String[] args) {
+    ExecutorService executor = Executors.newFixedThreadPool(10);
+    for (int i = 0; i < 100; i++) {
+        executor.submit(new Task());  // 提交任务到线程池执行
+    }
+    executor.shutdown();  // 关闭线程池
+}
+```
+
+缺点：线程池增加了程序的复杂度，特别是当涉及线程池参数调整和故障排查时。错误的配置可能导致死锁、资源耗尽等问题。
+
+优点：线程池可以重用预先创建的线程，避免了线程的创建和销毁开销，提高了程序性能。对于需要快速响应的并发请求，线程池可以迅速提供线程来处理任务，减少等待时间。并且，线程池能够有效控制运行的线程数量，防止因创建过多线程导致的系统资源耗尽。通过合理配置线程池大小，可以最大化 CPU 利用率和系统吞吐量。
+
+### ✔️使用 interrupt 是如何让线程抛出异常的
+
+interrupt() 本身是发出一个中断请求，是否抛出异常，要看目标线程正在做什么。
+
+正在正常运行：通常只是设置中断标志，线程需要主动调用 isInterrupted() 检查，不会在任意一行代码上突然抛异常。
+
+正在执行 sleep()、wait()、join() 等可中断等待：这些方法会响应中断，结束等待，并在目标线程中抛出 InterruptedException，同时清除中断标志。调用这些方法前已经有中断标志，也可能直接抛异常
+
+正在执行 LockSupport.park()：中断可以使它返回，但不会抛出 InterruptedException，也不会清除中断标志
+
+正在等待进入 synchronized，或者调用 ReentrantLock.lock() 等待锁：不能靠中断直接取消这次锁等待。需要可中断的锁等待时，应该用 lockInterruptibly()
+
+所以，中断标志更像一个 "请停止" 的信号，而不是线程的强制退出开关。
+
+处理 InterruptedException 时，如果当前方法不能继续完成任务，可以向上抛出；如果不能向上抛出，通常需要恢复中断标志，并结束当前任务。不要只打印异常，然后继续原来的循环。
+
+另外，isInterrupted() 只检查状态，Thread.interrupted() 检查的是当前线程，并且会清除中断标志，两者不要混用。
 
 ### ✔️Java 线程的状态有哪些
 
@@ -122,7 +196,14 @@ public static void main(String[] args) {
 
 ### sleep 和 wait 的区别是什么
 
-sleep() 和 wait() 都可以让线程暂停执行，但用途不一样：sleep 主要是让当前线程休眠，wait 主要是配合锁进行线程间协作
+sleep() 和 wait() 都可以让线程暂停执行，但用途不一样：sleep 主要是让当前线程休眠，wait 主要是配合锁进行线程间协作。
+
+| 对比项 | Thread.sleep() | Object.wait() |
+| 所属类 | Thread，静态方法 | Object，实例方法 |
+| 调用前提 | 不需要持有锁 | 必须持有调用对象的监视器锁 |
+| 是否释放锁 | 不释放已经持有的锁 | 释放调用对象的监视器锁 |
+| 线程状态 | 通常是 TIMED_WAITING | 无超时是 WAITING，有超时是 TIMED_WAITING |
+| 结束等待的原因 | 时间到，或者被中断 | 通知、超时、中断，也可能虚假唤醒 |
 
 ## 并发安全
 
@@ -172,11 +253,11 @@ AtomicInteger：原子整数类，提供了对证书类的原子操作，比如�
 
 ##### synchronized 工作原理
 
-synchronized 使用对象关联的监视器锁。同步代码块通常对应 monitorenter、monitorexit 字节码指令，同步方法则通过方法上的 ACC_SYNCHRONIZED标志，由 JVM 在调用和退出时处理加锁、解锁。
+synchronized 使用对象关联的监视器锁。同步代码块通常对应 monitorenter、monitorexit 字节码指令，同步方法则通过方法上的 ACC_SYNCHRONIZED 标志，由 JVM 在调用和退出时处理加锁、解锁。
 
 同一时刻只有一个线程能持有同一把锁，持有者可以再次进入使用这把锁的同步代码。退出一次同步范围，就释放一次重入，完全释放后其他线程才有机会获取锁。
 
-如果调用 wait()，线程会释放调用对象的监视器锁，进入等待集合，收到通知后还要重新获取锁。即使之前重入了多次，wait() 也会释放这个监视器的全部持有，并在返回前恢复原来的持有状态。
+如果调用 wait()，线程会释放调用对象的监视器锁（就是 obj.wait() 的 obj），进入等待集合，即使之前重入了多次，wait() 也会释放这个监视器的全部持有，被唤醒后还要重新获取锁，一旦拿到锁，JVM 会把重入计数器恢复成 wait 调用前的值，然后 wait 才返回。
 
 JVM 会针对不同的竞争情况优化 synchronized，不能认为每次加锁都要调用操作系统互斥量，或者每次都要发生线程阻塞。
 
@@ -190,17 +271,17 @@ ReentrantLock 基于 AQS 实现，主要依靠同步状态 state、持有锁的�
 
 获取失败：根据调用的 API，选择排队等待、响应中断、等待超时，或直接返回失败
 
-释放锁：减少重入次数，完全释放后唤醒等待线程，使其重新尝试获取。
+释放锁：减少重入次数，完全释放后唤醒正在等待的线程，使其重新尝试获取。
 
-它默认是非公平锁，可以通过 new ReentrantLock(true) 创建公平锁。lockInterruptibly() 支持可中断等待，tryLock(timeout, unit) 支持超时等待，多个 Condition 可以区分不同的等待条件
+它默认是非公平锁，可以通过 new ReentrantLock(true) 创建公平锁。lockInterruptibly() 支持可中断等待，tryLock(timeout, unit) 支持超时等待，多个 Condition 可以区分不同的等待条件。
 
 ##### 应用场景的区别
 
-简单的共享数据保护可以优先用 synchronized。比如比如对一组字段进行更新，代码块比较短，也没有特殊的等待要求，自动释放锁能减少使用错误。
+简单的共享数据保护可以优先用 synchronized。比如对一组字段进行更新，代码块比较短，也没有特殊的等待要求，自动释放锁能减少使用错误。
 
 需要控制获取锁的过程，可以使用 ReentrantLock。比如等待锁超过 100 毫秒就放弃、任务取消后结束锁等待，或者生产者和消费者分别等待 notFull、notEmpty 两个条件。
 
-不能直接说 ReentrantLock 一定比 synchronized 快。
+性能比较要结合实际的 JDK 版本、竞争程度和临界区耗时，不能直接说 ReentrantLock 一定比 synchronized 快。
 
 ### ✖️:syncronized 和 ReentrantLock 的区别
 
