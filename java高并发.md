@@ -299,6 +299,36 @@ synchronized 和 ReentrantLock 都是可重入的互斥锁，都能用于保护�
 
 ### synchronized 锁升级的过程
 
+### 介绍一下 AQS
+
+AQS 全称 AbstractQueuedSynchronizer，是 Java 用来构建锁和同步器的基础框架。像 ReentrantLock、Semaphore、CountDownLatch，都使用了 AQS。
+
+简单说，AQS 负责同步状态的管理，以及获取失败后的排队、阻塞和唤醒；具体"怎样才算获取成功"由其子类决定
+
+它的核心可以分为 3 部分
+
+##### 同步状态 state
+
+AQS 使用一个 volatile int 类型的 state 表示同步状态，不同工具里它的含义不同。
+
+ReentrantLock：表示锁的持有次数，0 表示未被持有，正数表示已经持有及其重入次数。
+
+Semaphore：表示可用许可数量。
+
+CountDownLatch：表示还需要完成多少次倒数。
+
+子类可以通过 getState()、setState()、compareAndSetState() 访问状态。这里要注意，volatile 保证可见性，但涉及并发竞争的"读取后修改"，仍然需要 CAS 等措施。
+
+##### 等待队列
+
+获取资源失败后，AQS 会把等待线程组织到一个双向队列里。这个队列借鉴了 CLH 队列的思路，但不是让所有线程一直自旋，而是配合 LockSupport.park()、unpark() 进行等待和唤醒。
+
+比如线程 A 持有锁，线程 B 获取失败，B 就可能进入队列并等待。A 完全释放锁后，会唤醒后继等待线程，让它重新尝试获取。
+
+被唤醒不代表直接拿到了锁，等待线程仍然要再次判断同步状态，并尝试获取资源。
+
+##### 子类实现获取和释放的规则
+
 
 
 ### ✖️CAS 有什么缺点？
