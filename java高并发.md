@@ -427,6 +427,82 @@ public void read() {
 
 从公平锁和非公平锁的两段获取逻辑可以看出来公平锁在锁空闲时多了 hasQueuedPredecessors() 检查：当前线程前面没有排队的等待者才尝试 CAS 获取（不是判断整个队列是否为空，当前线程自己可能已经位于队列的最前面）。
 
+##### 线程间通信方式有哪些
+
+1.Object 类的 wait()、notify() 和 notifyAll() 方法。这是 Java 中最基础的线程间通信方式，基于监视器锁机制
+
+wait()：使当前线程进入等待状态，直到其它线程调用该对象的 notify() 或 notifyAll() 方法
+
+notify()：唤醒在此对象监视器上等待的单个线程。
+
+notifyAll()：唤醒在此对象监视器上等待的所有线程
+
+```java
+class SharedObject {
+    private boolean ready = false;
+    public synchronized void consumerMethod() {
+        while (!ready) {
+            wait();
+        }
+        // 执行相应操作
+    }
+    public synchronized void productMethod() {
+        ready = true;
+        notifyAll();
+    }
+}
+```
+
+2.Lock 和 Condition 接口。Lock 接口提供了比 synchronized 更灵活的锁机制，Condition 接口则配合 Lock 实现线程间的等待/通知机制。
+
+await()：使当前线程进入等待状态，直到被其它线程唤醒
+
+signal()：唤醒一个等待在该 Condition 上的线程
+
+signalAll()：唤醒所有等待在该 Condition 上的线程
+
+```java
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+
+class SharedResource {
+    private final Lock lock = new ReentrantLock();
+    private final Condition condition = lock.newCondition();
+    private boolean ready = false;
+
+    public void consumer() throws InterruptedException {
+        lock.lock();
+        try {
+            while (!ready) {
+                condition.await();
+            }
+            // 执行相应操作
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    public void producer() {
+        lock.lock();
+        try {
+            ready = true;
+            condition.signalAll();
+        } finally {
+            lock.unlock();
+        }
+    }
+}
+```
+
+3.volatile 关键字。可以用于发布简单的状态变化，通过 volatile 写和后续读建立可见性及顺序保证。不过它不能保证复合操作原子，也不应该理解成完全绕过 CPU 缓存。下面的空循环仅演示状态传递，会消耗 CPU，长时间等待应考虑阻塞式协作。
+
+```java
+
+```
+
+4.
+
 ## 线程池
 
 ### ✖️线程池怎么使用
