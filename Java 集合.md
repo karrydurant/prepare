@@ -96,7 +96,7 @@ System.out.println(filteredMap);
 
 普通 put 追加链表节点时：桶中已有 8 个节点，再加一个达到 9 个时，会尝试树化；数组容量小于 64 时先扩容，容量至少为 64 才转成树。
 
-### ConcurrentHashMap 怎么实现的
+### ✖️ConcurrentHashMap 怎么实现的
 
 ##### JDK 1.7
 
@@ -123,3 +123,30 @@ JDK 1.8 ConcurrentHashMap 主要通过 volatile + CAS 或者 synchronized 来实
 如果容器不为空，则根据存储的元素计算该位置是否为空。如果是空的就用 CAS 设置该节点，如果不为空就用 synchronized，
 
 空桶写入用 CAS，非空桶写入通过 synchronized 协调，读取依赖安全发布和可见性机制
+
+### 介绍一下 HashMap 的扩容机制
+
+hashMap 默认的负载因子是 0.75，即如果 hashmap 中的元素个数超过了总容量的 75%，则会触发扩容，扩容分为两个步骤：先对哈希表长度进行扩展（2倍），再将就哈希表中的数据放到新的哈希表中。
+
+因为是将长度扩为 2 倍，所以元素的位置要么在原位置，要么在原位置再移动 2 次幂的位置
+
+<img width="727" height="67" alt="1713514753772-9467a399-6b18-4a47-89d4-957adcc53cc0" src="https://github.com/user-attachments/assets/043a8ba0-58fb-4022-8d61-208423ebe0ba" />
+
+在扩充 HashMap 的时候，不用重新计算 hash，只要看原来的 hash 值新增的那个 bit 是 1 还是 0 即可
+
+这个设计确实非常的巧妙，既省去了重新计算hash值的时间，而且同时，由于新增的1bit是0还是1可以认为是随机的，因此resize的过程，均匀的把之前的冲突的节点分散到新的bucket了。
+### HashMap 的大小为什么是 2 的 n 次方大小呢
+
+HashMap 底层是 "数组+链表/红黑树" 的结构，当我们要存一个 key-value 时，第一步就是确定这个 key 存在数组的哪个位置（索引）。
+
+HashMap 用的索引计算公式是：索引 = hash & (length - 1)
+
+这里的 hash 是经过扰动处理后的 key 的哈希值，length 是数组的容量。这个公式的目的是用位运算代替取模运算（因为位运算直接操作二进制位，速度远快于除法/取模），但其生效的前提是 length 必须是 2 的 n 次方。
+
+##### 保证位运算等价于取模，实现高效寻址
+
+##### 让哈希值的低位更均匀，减少碰撞
+
+HashMap 会对 key 的原始 hashCode 做扰动处理（JDK 8 里是 hash = (h = key.hashCode()) ^ (h >>> 16)）。目的是让 hash 值的二进制位尽可能均匀分布。
+
+只有当 length-1 的二进制全是 1，才能"接住"这些均匀分布的位（少了一位来分散 hash，碰撞概率自然就高了）
