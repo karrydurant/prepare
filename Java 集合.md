@@ -96,6 +96,10 @@ System.out.println(filteredMap);
 
 普通 put 追加链表节点时：桶中已有 8 个节点，再加一个达到 9 个时，会尝试树化；数组容量小于 64 时先扩容，容量至少为 64 才转成树。
 
+### HashMap 是线程安全的吗
+
+hashmap
+
 ### ✖️ConcurrentHashMap 怎么实现的
 
 ##### JDK 1.7
